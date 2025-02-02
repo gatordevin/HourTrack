@@ -14,7 +14,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 # Initialize Flask app and configuration
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your-secret-key'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///time_tracker.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////data/db.sqlite'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Initialize extensions
