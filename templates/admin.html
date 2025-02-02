@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Admin Dashboard{% endblock %}
+{% block content %}
+<h2>Admin Dashboard</h2>
+
+<form method="GET" action="{{ url_for('admin') }}" class="row g-3 mb-4">
+  <div class="col-auto">
+    <input type="date" name="start_date" class="form-control" placeholder="Start Date" required>
+  </div>
+  <div class="col-auto">
+    <input type="date" name="end_date" class="form-control" placeholder="End Date" required>
+  </div>
+  <!-- Hidden field for the user's timezone offset (in minutes) -->
+  <input type="hidden" name="tz_offset" id="tz_offset" value="">
+  <div class="col-auto">
+    <button type="submit" class="btn btn-primary mb-3">Filter</button>
+  </div>
+</form>
+
+{% if filter_desc %}
+  <p>Showing tasks {{ filter_desc }}</p>
+{% endif %}
+
+<h4>Total Hours Per User</h4>
+<table class="table table-bordered">
+  <thead>
+    <tr>
+      <th>User</th>
+      <th>Total Hours</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for user, hours in totals.items() %}
+    <tr>
+      <td>{{ user }}</td>
+      <td>{{ '{:.2f}'.format(hours) }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h4>All Activities</h4>
+<table class="table table-striped">
+  <thead>
+    <tr>
+      <th>User</th>
+      <th>Description</th>
+      <th>Start Time</th>
+      <th>End Time</th>
+      <th>Duration (hh:mm:ss)</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for act in activities %}
+    <tr>
+      <td>{{ act.user.username }}</td>
+      <td>{{ act.description }}</td>
+      <!-- Render UTC time in a span; the JS will convert it to local time -->
+      <td><span class="local-time" data-utc="{{ act.start_time.isoformat() }}Z"></span></td>
+      <td><span class="local-time" data-utc="{{ act.end_time.isoformat() }}Z"></span></td>
+      <td>
+        {% set sec = act.total_seconds %}
+        {% set hrs = sec // 3600 %}
+        {% set mins = (sec % 3600) // 60 %}
+        {% set secs = sec % 60 %}
+        {{ "%02d:%02d:%02d"|format(hrs, mins, secs) }}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Set the timezone offset in the hidden input for filtering (in minutes)
+document.getElementById('tz_offset').value = new Date().getTimezoneOffset();
+
+// Convert all elements with class 'local-time' from UTC to local time
+function convertUtcToLocal() {
+    const elements = document.querySelectorAll('.local-time');
+    elements.forEach(el => {
+        const utcString = el.getAttribute('data-utc');
+        if (utcString) {
+            const localDate = new Date(utcString);
+            // Format as YYYY-MM-DD HH:MM:SS in local time
+            const year = localDate.getFullYear();
+            const month = ("0" + (localDate.getMonth() + 1)).slice(-2);
+            const day = ("0" + localDate.getDate()).slice(-2);
+            const hours = ("0" + localDate.getHours()).slice(-2);
+            const minutes = ("0" + localDate.getMinutes()).slice(-2);
+            const seconds = ("0" + localDate.getSeconds()).slice(-2);
+            el.innerText = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+        }
+    });
+}
+document.addEventListener("DOMContentLoaded", convertUtcToLocal);
+</script>
+{% endblock %}

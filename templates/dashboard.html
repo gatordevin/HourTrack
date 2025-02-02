@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<h2>Dashboard</h2>
+<div class="mb-4">
+  <div class="card p-3">
+    <div class="d-flex align-items-center justify-content-between">
+      <div class="timer-display" id="timerDisplay">
+        {% if timer_session %}
+          00:00:00
+        {% else %}
+          No active timer.
+        {% endif %}
+      </div>
+      <div>
+        {% if not timer_session %}
+        <button id="startBtn" class="btn btn-success">Start Tracking</button>
+        {% else %}
+          {% if timer_session.is_running %}
+          <button id="pauseBtn" class="btn btn-warning">Pause</button>
+          {% else %}
+          <button id="resumeBtn" class="btn btn-info">Resume</button>
+          {% endif %}
+          <button id="stopBtn" class="btn btn-danger">Stop</button>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<h3>Past Activities</h3>
+<table class="table table-striped">
+  <thead>
+    <tr>
+      <th>Description</th>
+      <th>Start Time</th>
+      <th>End Time</th>
+      <th>Duration (hh:mm:ss)</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for act in activities %}
+    <tr>
+      <td>{{ act.description }}</td>
+      <!-- Render UTC datetimes in spans for client-side conversion -->
+      <td><span class="local-time" data-utc="{{ act.start_time.isoformat() }}Z"></span></td>
+      <td><span class="local-time" data-utc="{{ act.end_time.isoformat() }}Z"></span></td>
+      <td>
+        {% set sec = act.total_seconds %}
+        {% set hrs = sec // 3600 %}
+        {% set mins = (sec % 3600) // 60 %}
+        {% set secs = sec % 60 %}
+        {{ "%02d:%02d:%02d"|format(hrs, mins, secs) }}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<!-- Modal for description on stopping timer -->
+<div class="modal fade" id="descModal" tabindex="-1" aria-labelledby="descModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <form id="descForm">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="descModalLabel">Stop Timer</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="description" class="form-label">Task Description</label>
+            <input type="text" class="form-control" id="description" name="description" required>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="submit" class="btn btn-danger">Stop & Save</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const socket = io();
+
+  // On connection, join a room named with the user id
+  socket.on('connect', function() {
+    socket.emit('join', {'user_id': '{{ current_user.id }}'});
+  });
+
+  // When a timer update is received, update display and buttons accordingly.
+  socket.on('timer_update', function(data) {
+    updateTimerDisplay(data);
+  });
+
+  // Helper: format seconds into HH:MM:SS
+  function formatTime(totalSeconds) {
+    let hrs = Math.floor(totalSeconds / 3600);
+    let mins = Math.floor((totalSeconds % 3600) / 60);
+    let secs = totalSeconds % 60;
+    return ("0" + hrs).slice(-2) + ":" +
+           ("0" + mins).slice(-2) + ":" +
+           ("0" + secs).slice(-2);
+  }
+
+  // Global timer state for client-side update
+  let timerState = null;
+
+  // Periodically update display if timer is running
+  setInterval(function() {
+    if (timerState && timerState.is_running) {
+      // Increase the accumulated seconds locally
+      timerState.accumulated += 1;
+      document.getElementById('timerDisplay').innerText = formatTime(timerState.accumulated);
+    }
+  }, 1000);
+
+  // Update the display and adjust buttons based on timer state
+  function updateTimerDisplay(data) {
+    timerState = data;
+    if (data) {
+      document.getElementById('timerDisplay').innerText = formatTime(data.accumulated);
+      // Replace button area with pause/stop (or resume if not running)
+      let btnHTML = "";
+      if (data.is_running) {
+        btnHTML += '<button id="pauseBtn" class="btn btn-warning me-2">Pause</button>';
+      } else {
+        btnHTML += '<button id="resumeBtn" class="btn btn-info me-2">Resume</button>';
+      }
+      btnHTML += '<button id="stopBtn" class="btn btn-danger">Stop</button>';
+      document.querySelector('.card .d-flex > div:last-child').innerHTML = btnHTML;
+      attachButtonHandlers();
+    } else {
+      document.getElementById('timerDisplay').innerText = "No active timer.";
+      document.querySelector('.card .d-flex > div:last-child').innerHTML = '<button id="startBtn" class="btn btn-success">Start Tracking</button>';
+      attachButtonHandlers();
+    }
+  }
+
+  // Attach click handlers to the current buttons
+  function attachButtonHandlers() {
+    const startBtn = document.getElementById('startBtn');
+    if (startBtn) {
+      startBtn.onclick = function() {
+        fetch("{{ url_for('start_timer') }}", {method: 'POST'})
+          .then(response => response.json())
+          .then(data => { /* update will come via socket.io */ });
+      }
+    }
+    const pauseBtn = document.getElementById('pauseBtn');
+    if (pauseBtn) {
+      pauseBtn.onclick = function() {
+        fetch("{{ url_for('pause_timer') }}", {method: 'POST'})
+          .then(response => response.json())
+          .then(data => { });
+      }
+    }
+    const resumeBtn = document.getElementById('resumeBtn');
+    if (resumeBtn) {
+      resumeBtn.onclick = function() {
+        fetch("{{ url_for('resume_timer') }}", {method: 'POST'})
+          .then(response => response.json())
+          .then(data => { });
+      }
+    }
+    const stopBtn = document.getElementById('stopBtn');
+    if (stopBtn) {
+      stopBtn.onclick = function() {
+        // Show modal to ask for description
+        var descModal = new bootstrap.Modal(document.getElementById('descModal'));
+        descModal.show();
+      }
+    }
+  }
+
+  // Handle description form submission (stopping timer)
+  document.getElementById('descForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    fetch("{{ url_for('stop_timer') }}", {
+      method: 'POST',
+      body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.status === 'stopped') {
+        // Reload the page to update past activities and reset timer UI.
+        location.reload();
+      } else {
+        alert(data.message || "Error stopping timer.");
+      }
+    });
+  });
+
+  // On page load, fetch current timer state
+  fetch("{{ url_for('get_timer_state') }}")
+    .then(response => response.json())
+    .then(data => {
+      updateTimerDisplay(data);
+    });
+
+  // Attach handlers for buttons already in DOM
+  attachButtonHandlers();
+
+  // Convert all elements with class 'local-time' from UTC to local time
+  function convertUtcToLocal() {
+      const elements = document.querySelectorAll('.local-time');
+      elements.forEach(el => {
+          const utcString = el.getAttribute('data-utc');
+          if (utcString) {
+              const localDate = new Date(utcString);
+              const year = localDate.getFullYear();
+              const month = ("0" + (localDate.getMonth() + 1)).slice(-2);
+              const day = ("0" + localDate.getDate()).slice(-2);
+              const hours = ("0" + localDate.getHours()).slice(-2);
+              const minutes = ("0" + localDate.getMinutes()).slice(-2);
+              const seconds = ("0" + localDate.getSeconds()).slice(-2);
+              el.innerText = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+          }
+      });
+  }
+  document.addEventListener("DOMContentLoaded", convertUtcToLocal);
+</script>
+{% endblock %}
