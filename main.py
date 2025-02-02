@@ -318,4 +318,4 @@ if __name__ == '__main__':
             admin_user.set_password('adminpass')
             db.session.add(admin_user)
             db.session.commit()
-    socketio.run(app, debug=True)
+    socketio.run(app, debug=True, port=8080)
